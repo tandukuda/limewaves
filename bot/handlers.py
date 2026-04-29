@@ -4,6 +4,7 @@ Telegram command and callback handlers for Limewaves.
 
 import io
 import logging
+import asyncio
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -86,7 +87,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    ok = navidrome.ping()
+    ok = await asyncio.to_thread(navidrome.ping)
     await update.message.reply_text("✅ Navidrome is reachable." if ok else "❌ Cannot reach Navidrome.")
 
 
@@ -104,7 +105,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     await update.message.reply_text(f"🔍 Searching *{query}*…", parse_mode="Markdown")
 
-    results = navidrome.search(query, song_count=8)
+    results = await asyncio.to_thread(navidrome.search, query, 8)
     songs = results.get("song", [])
 
     if not songs:
@@ -140,7 +141,7 @@ async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query = " ".join(context.args)
-    results = navidrome.search(query, song_count=1)
+    results = await asyncio.to_thread(navidrome.search, query, 1)
     songs = results.get("song", [])
 
     if not songs:
@@ -148,8 +149,8 @@ async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     song = songs[0]
-    url = navidrome.get_stream_url(song["id"])
-    mpv.play(url)
+    url = await asyncio.to_thread(navidrome.get_stream_url, song["id"])
+    await asyncio.to_thread(mpv.play, url)
     _cache_track(song)
 
     await update.message.reply_text(
@@ -170,7 +171,7 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query = " ".join(context.args)
-    results = navidrome.search(query, song_count=1)
+    results = await asyncio.to_thread(navidrome.search, query, 1)
     songs = results.get("song", [])
 
     if not songs:
@@ -178,8 +179,8 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     song = songs[0]
-    url = navidrome.get_stream_url(song["id"])
-    mpv.queue(url)
+    url = await asyncio.to_thread(navidrome.get_stream_url, song["id"])
+    await asyncio.to_thread(mpv.queue, url)
 
     await update.message.reply_text(
         f"➕ Queued: *{song['title']}* — {song.get('artist', 'Unknown')}",
@@ -197,17 +198,23 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     genre = " ".join(context.args) if context.args else None
     label = f" *{genre}*" if genre else ""
 
-    songs = navidrome.get_random_songs(size=25, genre=genre)
+    songs = await asyncio.to_thread(navidrome.get_random_songs, 25, genre)
     if not songs:
         await update.message.reply_text("No songs found.")
         return
 
     first, rest = songs[0], songs[1:]
-    mpv.play(navidrome.get_stream_url(first["id"]))
+    first_url = await asyncio.to_thread(navidrome.get_stream_url, first["id"])
+    await asyncio.to_thread(mpv.play, first_url)
     _cache_track(first)
 
-    for s in rest:
-        mpv.queue(navidrome.get_stream_url(s["id"]))
+    # Fetch stream URLs concurrently to speed up network-bound calls
+    urls = await asyncio.gather(
+        *(asyncio.to_thread(navidrome.get_stream_url, s["id"]) for s in rest)
+    )
+    # Queue tracks sequentially to preserve playlist order and avoid concurrent mpv IPC
+    for url in urls:
+        await asyncio.to_thread(mpv.queue, url)
 
     await update.message.reply_text(
         f"🎲 Playing random{label}\n\n"
@@ -225,17 +232,17 @@ async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
 
-    if not mpv.is_running():
+    if not await asyncio.to_thread(mpv.is_running):
         await update.message.reply_text("Nothing is playing right now.")
         return
 
-    title = current_track.get("title") or mpv.get_title() or "Unknown"
+    title = current_track.get("title") or await asyncio.to_thread(mpv.get_title) or "Unknown"
     artist = current_track.get("artist", "Unknown")
     album = current_track.get("album", "")
-    paused = mpv.is_paused()
-    volume = mpv.get_volume()
-    pos = mpv.get_position()
-    dur = mpv.get_duration()
+    paused = await asyncio.to_thread(mpv.is_paused)
+    volume = await asyncio.to_thread(mpv.get_volume)
+    pos = await asyncio.to_thread(mpv.get_position)
+    dur = await asyncio.to_thread(mpv.get_duration)
 
     status = "⏸ Paused" if paused else "▶️ Playing"
     text = (
@@ -250,7 +257,7 @@ async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cover_id = current_track.get("cover_id")
     if cover_id:
         try:
-            art = navidrome.get_cover_art_bytes(cover_id)
+            art = await asyncio.to_thread(navidrome.get_cover_art_bytes, cover_id)
             await update.message.reply_photo(
                 photo=io.BytesIO(art), caption=text, parse_mode="Markdown"
             )
@@ -268,35 +275,35 @@ async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    mpv.pause()
+    await asyncio.to_thread(mpv.pause)
     await update.message.reply_text("⏸ Paused")
 
 
 async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    mpv.resume()
+    await asyncio.to_thread(mpv.resume)
     await update.message.reply_text("▶️ Resumed")
 
 
 async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    mpv.next()
+    await asyncio.to_thread(mpv.next)
     await update.message.reply_text("⏭ Skipped")
 
 
 async def cmd_prev(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    mpv.previous()
+    await asyncio.to_thread(mpv.previous)
     await update.message.reply_text("⏮ Previous")
 
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    mpv.stop()
+    await asyncio.to_thread(mpv.stop)
     current_track.clear()
     await update.message.reply_text("⏹ Stopped")
 
@@ -305,11 +312,11 @@ async def cmd_vol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
     if not context.args:
-        vol = mpv.get_volume()
+        vol = await asyncio.to_thread(mpv.get_volume)
         await update.message.reply_text(f"🔊 Volume: {vol}%")
         return
     try:
-        mpv.set_volume(int(context.args[0]))
+        await asyncio.to_thread(mpv.set_volume, int(context.args[0]))
         await update.message.reply_text(f"🔊 Volume set to {context.args[0]}%")
     except ValueError:
         await update.message.reply_text("Usage: `/vol <0-100>`", parse_mode="Markdown")
@@ -323,7 +330,7 @@ async def cmd_seek(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         secs = int(context.args[0])
-        mpv.seek(secs)
+        await asyncio.to_thread(mpv.seek, secs)
         direction = "⏩" if secs >= 0 else "⏪"
         await update.message.reply_text(f"{direction} Seeked {abs(secs)}s {'forward' if secs >= 0 else 'backward'}")
     except ValueError:
@@ -337,7 +344,7 @@ async def cmd_seek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_genres(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
-    genres = navidrome.get_genres()
+    genres = await asyncio.to_thread(navidrome.get_genres)
     if not genres:
         await update.message.reply_text("No genres found.")
         return
@@ -367,13 +374,13 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Fallback: fetch from Navidrome if not cached
         if not song:
             try:
-                song = navidrome.get_song(song_id)
+                song = await asyncio.to_thread(navidrome.get_song, song_id)
             except Exception:
                 await query.edit_message_text("❌ Could not fetch song info.")
                 return
 
-        url = navidrome.get_stream_url(song_id)
-        mpv.play(url)
+        url = await asyncio.to_thread(navidrome.get_stream_url, song_id)
+        await asyncio.to_thread(mpv.play, url)
         _cache_track(song)
 
         await query.edit_message_text(
