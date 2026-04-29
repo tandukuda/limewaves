@@ -1,0 +1,15 @@
+[Unit]
+Description=Limewaves Telegram Music Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/limewaves
+ExecStart=%h/.venv/limewaves/bin/python main.py
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=%h/projects/limewaves/.env
+
+[Install]
+WantedBy=default.target
