@@ -47,7 +47,7 @@ Python 3.11+ required (uses `int | None` union types).
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/yourusername/limewaves.git ~/projects/limewaves
+git clone https://github.com/tandukuda/limewaves.git ~/projects/limewaves
 cd ~/projects/limewaves
 ```
 
