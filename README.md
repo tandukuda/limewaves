@@ -158,29 +158,41 @@ Presets are stored in `/usr/share/projectM/presets/`. The Milkdrop ones under `p
 
 ---
 
-## Running as a systemd user service
+## Running Limewaves
 
-So the bot starts automatically and runs in the background:
+Limewaves is designed to be run manually — only when you want to listen to music.
+
+### Start
 
 ```bash
-# Copy the service file
-mkdir -p ~/.config/systemd/user
-cp limewaves.service ~/.config/systemd/user/
-
-# Edit paths if your project is not at ~/projects/limewaves
-nano ~/.config/systemd/user/limewaves.service
-
-# Enable and start
-systemctl --user daemon-reload
-systemctl --user enable limewaves
-systemctl --user start limewaves
-
-# Check status
-systemctl --user status limewaves
-
-# View logs
-journalctl --user -u limewaves -f
+cd ~/projects/limewaves
+source ~/.venv/limewaves/bin/activate
+python main.py
 ```
+
+### Start with notifier (track change notifications)
+
+```bash
+cd ~/projects/limewaves
+source ~/.venv/limewaves/bin/activate
+python notifier.py &
+python main.py
+```
+
+### Stop
+
+Just `Ctrl+C` in the terminal. The notifier will stop automatically since it's a background process tied to the same session.
+
+### Optional: shell aliases
+
+Add these to your `~/.bashrc` for convenience:
+
+```bash
+alias lw="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python main.py"
+alias lw-notify="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python notifier.py & python main.py"
+```
+
+Then just type `lw` or `lw-notify` in any terminal to start.
 
 ---
 
@@ -188,24 +200,26 @@ journalctl --user -u limewaves -f
 
 ```
 limewaves/
-├── main.py                  # Entry point, registers all handlers
-├── config.py                # Loads .env into constants
+├── main.py                      # Entry point, registers all handlers
+├── notifier.py                  # Optional track-change notifier (notifier.py)
+├── config.py                    # Loads .env into constants
 ├── requirements.txt
 ├── .env.example
-├── limewaves.service        # systemd user service
+├── limewaves.service            # systemd user service for the bot
+├── limewaves-notifier.service   # systemd user service for the notifier (optional)
 │
 ├── navidrome/
 │   ├── __init__.py
-│   └── client.py            # Subsonic API wrapper (NavidromeClient)
+│   └── client.py                # Subsonic API wrapper (NavidromeClient)
 │
 ├── player/
 │   ├── __init__.py
-│   └── mpv.py               # mpv IPC socket controller (MPVController)
+│   └── mpv.py                   # mpv IPC socket controller (MPVController)
 │
 └── bot/
     ├── __init__.py
-    ├── state.py             # Shared singletons (navidrome, mpv, current_track)
-    └── handlers.py          # All Telegram command and callback handlers
+    ├── state.py                 # Shared singletons (navidrome, mpv, current_track)
+    └── handlers.py              # Telegram command and callback handlers
 ```
 
 ---
@@ -221,7 +235,7 @@ limewaves/
 ## Troubleshooting
 
 **Bot doesn't respond**
-Check `journalctl --user -u limewaves -f` for errors. Confirm the token is correct and the bot isn't already running elsewhere.
+Check the terminal output for errors. Confirm the token is correct in `.env` and the bot isn't already running in another terminal.
 
 **mpv doesn't start**
 Make sure `mpv` is installed: `which mpv`. Check the socket path in `.env` is writable.

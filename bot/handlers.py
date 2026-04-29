@@ -2,15 +2,15 @@
 Telegram command and callback handlers for Limewaves.
 """
 
+import asyncio
 import io
 import logging
-import asyncio
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from bot.state import current_track, mpv, navidrome
 from config import ALLOWED_USER_ID
-from bot.state import navidrome, mpv, current_track
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Auth guard
 # ------------------------------------------------------------------
 
+
 def _allowed(user_id: int) -> bool:
     return ALLOWED_USER_ID == 0 or user_id == ALLOWED_USER_ID
 
@@ -26,6 +27,7 @@ def _allowed(user_id: int) -> bool:
 # ------------------------------------------------------------------
 # Formatting helpers
 # ------------------------------------------------------------------
+
 
 def _fmt_time(seconds) -> str:
     if seconds is None:
@@ -42,20 +44,40 @@ def _track_line(song: dict) -> str:
 # Track state helper
 # ------------------------------------------------------------------
 
-def _cache_track(song: dict):
+
+async def _cache_track(song: dict):
+    # Update in-memory now-playing info (fast, synchronous dict ops)
     current_track.clear()
-    current_track.update({
-        "id": song.get("id"),
-        "title": song.get("title", "Unknown"),
-        "artist": song.get("artist", "Unknown"),
-        "album": song.get("album", ""),
-        "cover_id": song.get("coverArt", ""),
-    })
+    current_track.update(
+        {
+            "id": song.get("id"),
+            "title": song.get("title", "Unknown"),
+            "artist": song.get("artist", "Unknown"),
+            "album": song.get("album", ""),
+            "cover_id": song.get("coverArt", ""),
+        }
+    )
+
+    # Fetch and write cover art off the event loop to avoid blocking
+    cover_id = song.get("coverArt")
+    if cover_id:
+        try:
+            art = await asyncio.to_thread(navidrome.get_cover_art_bytes, cover_id, 200)
+
+            def _write(path, data):
+                with open(path, "wb") as f:
+                    f.write(data)
+
+            await asyncio.to_thread(_write, "/tmp/limewaves_cover.jpg", art)
+        except Exception:
+            # Best-effort; do not crash the caller
+            pass
 
 
 # ------------------------------------------------------------------
 # /start
 # ------------------------------------------------------------------
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
@@ -84,22 +106,28 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /ping
 # ------------------------------------------------------------------
 
+
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
     ok = await asyncio.to_thread(navidrome.ping)
-    await update.message.reply_text("✅ Navidrome is reachable." if ok else "❌ Cannot reach Navidrome.")
+    await update.message.reply_text(
+        "✅ Navidrome is reachable." if ok else "❌ Cannot reach Navidrome."
+    )
 
 
 # ------------------------------------------------------------------
 # /search  — shows inline keyboard, user taps to play
 # ------------------------------------------------------------------
 
+
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
     if not context.args:
-        await update.message.reply_text("Usage: `/search <query>`", parse_mode="Markdown")
+        await update.message.reply_text(
+            "Usage: `/search <query>`", parse_mode="Markdown"
+        )
         return
 
     query = " ".join(context.args)
@@ -133,6 +161,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /play  — search and immediately start playing first result
 # ------------------------------------------------------------------
 
+
 async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
@@ -151,7 +180,7 @@ async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     song = songs[0]
     url = await asyncio.to_thread(navidrome.get_stream_url, song["id"])
     await asyncio.to_thread(mpv.play, url)
-    _cache_track(song)
+    await _cache_track(song)
 
     await update.message.reply_text(
         f"▶️ *{song['title']}*\n👤 {song.get('artist', 'Unknown')}\n💿 {song.get('album', '')}",
@@ -163,11 +192,14 @@ async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /queue  — search and append to queue
 # ------------------------------------------------------------------
 
+
 async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
     if not context.args:
-        await update.message.reply_text("Usage: `/queue <query>`", parse_mode="Markdown")
+        await update.message.reply_text(
+            "Usage: `/queue <query>`", parse_mode="Markdown"
+        )
         return
 
     query = " ".join(context.args)
@@ -192,6 +224,7 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /random
 # ------------------------------------------------------------------
 
+
 async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
@@ -206,7 +239,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
     first, rest = songs[0], songs[1:]
     first_url = await asyncio.to_thread(navidrome.get_stream_url, first["id"])
     await asyncio.to_thread(mpv.play, first_url)
-    _cache_track(first)
+    await _cache_track(first)
 
     # Fetch stream URLs concurrently to speed up network-bound calls
     urls = await asyncio.gather(
@@ -228,6 +261,7 @@ async def cmd_random(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /np  — now playing
 # ------------------------------------------------------------------
 
+
 async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
@@ -236,7 +270,11 @@ async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Nothing is playing right now.")
         return
 
-    title = current_track.get("title") or await asyncio.to_thread(mpv.get_title) or "Unknown"
+    title = (
+        current_track.get("title")
+        or await asyncio.to_thread(mpv.get_title)
+        or "Unknown"
+    )
     artist = current_track.get("artist", "Unknown")
     album = current_track.get("album", "")
     paused = await asyncio.to_thread(mpv.is_paused)
@@ -271,6 +309,7 @@ async def cmd_np(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------------
 # Simple controls
 # ------------------------------------------------------------------
+
 
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
@@ -326,13 +365,18 @@ async def cmd_seek(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
         return
     if not context.args:
-        await update.message.reply_text("Usage: `/seek <seconds>` e.g. `/seek 30` or `/seek -15`", parse_mode="Markdown")
+        await update.message.reply_text(
+            "Usage: `/seek <seconds>` e.g. `/seek 30` or `/seek -15`",
+            parse_mode="Markdown",
+        )
         return
     try:
         secs = int(context.args[0])
         await asyncio.to_thread(mpv.seek, secs)
         direction = "⏩" if secs >= 0 else "⏪"
-        await update.message.reply_text(f"{direction} Seeked {abs(secs)}s {'forward' if secs >= 0 else 'backward'}")
+        await update.message.reply_text(
+            f"{direction} Seeked {abs(secs)}s {'forward' if secs >= 0 else 'backward'}"
+        )
     except ValueError:
         await update.message.reply_text("Seconds must be a number.")
 
@@ -340,6 +384,7 @@ async def cmd_seek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------------
 # /genres
 # ------------------------------------------------------------------
+
 
 async def cmd_genres(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _allowed(update.effective_user.id):
@@ -358,6 +403,7 @@ async def cmd_genres(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ------------------------------------------------------------------
 # Inline keyboard callback
 # ------------------------------------------------------------------
+
 
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -381,7 +427,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         url = await asyncio.to_thread(navidrome.get_stream_url, song_id)
         await asyncio.to_thread(mpv.play, url)
-        _cache_track(song)
+        await _cache_track(song)
 
         await query.edit_message_text(
             f"▶️ *{song.get('title', '?')}*\n👤 {song.get('artist', 'Unknown')}\n💿 {song.get('album', '')}",
