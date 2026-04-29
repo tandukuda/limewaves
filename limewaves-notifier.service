@@ -1,0 +1,17 @@
+[Unit]
+Description=Limewaves Track Change Notifier
+After=limewaves.service
+BindsTo=limewaves.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/limewaves
+ExecStart=%h/.venv/limewaves/bin/python notifier.py
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=%h/projects/limewaves/.env
+Environment=DISPLAY=:0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+[Install]
+WantedBy=default.target
