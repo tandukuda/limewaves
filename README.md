@@ -1,6 +1,6 @@
 # 🟢 Limewaves
 
-> Named after LimeWire — the app that started it all — and waves, for the audio and visuals.
+> Named after LimeWire, the app that started it all, and waves, for the audio and visuals.
 
 A lightweight Telegram bot that controls music playback from your **Navidrome** server through **mpv** on your local machine, with **projectM** as the visualizer layer.
 
@@ -11,13 +11,13 @@ A lightweight Telegram bot that controls music playback from your **Navidrome** 
 ```
 [Your Phone]
      ↕  Telegram
-[Limewaves bot — runs on Omarchy]
+[Limewaves bot (runs on Omarchy)]
      ↕  Subsonic API (LAN)
 [Navidrome on M910Q]  ←──  [Music files on Pi NAS]
      ↓  stream URL
 [mpv on Omarchy]
      ↓  audio output
-[projectM — floating Hyprland window]
+[projectM (floating Hyprland window)]
 ```
 
 ---
@@ -132,7 +132,7 @@ Open Telegram → your bot → `/start`
 
 ## projectM Setup
 
-projectM reads audio from Pipewire automatically — no extra config needed as long as mpv is routing through Pipewire (it does by default on Arch).
+projectM reads audio from Pipewire automatically, no extra config needed as long as mpv is routing through Pipewire (it does by default on Arch).
 
 ### Launch projectM
 
@@ -150,9 +150,9 @@ windowrulev2 = move 100 100, class:^(projectM)$
 
 ### Preset navigation
 
-- `R` — random preset
-- `L` — lock current preset
-- `Arrow keys` — browse presets
+- `R`: random preset
+- `L`: lock current preset
+- `Arrow keys`: browse presets
 
 Presets are stored in `/usr/share/projectM/presets/`. The Milkdrop ones under `presets_milkdrop/` are the most visually interesting.
 
@@ -160,7 +160,7 @@ Presets are stored in `/usr/share/projectM/presets/`. The Milkdrop ones under `p
 
 ## Running Limewaves
 
-Limewaves is designed to be run manually — only when you want to listen to music.
+Limewaves is designed to be run manually. Only when you want to listen to music.
 
 ### Start
 
@@ -226,9 +226,9 @@ limewaves/
 
 ## Roadmap
 
-- [x] Phase 1 — Core bot + mpv + projectM on Omarchy laptop
-- [ ] Phase 2 — Custom p5.js visualizer with WebSocket audio bridge
-- [ ] Phase 3 — Migrate to mini PC, connect DAC + speakers + projector
+- [x] Phase 1: Core bot + mpv + projectM on Omarchy laptop
+- [ ] Phase 2: Custom p5.js visualizer with WebSocket audio bridge
+- [ ] Phase 3: Migrate to mini PC, connect DAC + speakers + projector
 
 ---
 
@@ -250,4 +250,11 @@ Run `pactl list sources` and confirm Pipewire is active. projectM should pick up
 
 ## Why the name?
 
-LimeWire was the first place music felt free — even if it technically wasn't. Limewaves is the grown-up, self-hosted version of that same spirit: owning your music experience completely.
+LimeWire was the first place music felt free, even if it technically wasn't. Limewaves is the grown-up, self-hosted version of that same spirit: owning your music experience completely.
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
