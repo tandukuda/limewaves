@@ -1,8 +1,37 @@
 # 🟢 Limewaves
 
-> Named after LimeWire, the app that started it all, and waves, for the audio and visuals.
+A minimalist, Telegram-controlled music player designed for the ritual of intentional listening.
 
-A lightweight Telegram bot that controls music playback from your **Navidrome** server through **mpv** on your local machine, with **projectM** as the visualizer layer.
+---
+
+## The Philosophy
+
+I built Limewaves because I have a growing collection of FLAC files purchased directly from artists I love. Supporting artists directly, bypassing streaming services that often underpay them, is important to me. But digital files lack the tactile experience of vinyl or CDs.
+
+With modern digital apps, the default behavior is to skip, shuffle, and build endless playlists. I don't hate those features, but they strip away the experience of listening to an album exactly as the artist intended: from the first track to the last.
+
+Limewaves is not meant to replace Spotify, Navidrome web clients, or full-featured desktop music players. It is built to bring back the ritual. You sit down, pick an album, and let it play. When the album ends, life moves on. It is an intentional, distraction-free environment for pure listening.
+
+---
+
+## The Name
+
+**Limewaves** is a portmanteau of *LimeWire* and *Waves*.
+
+LimeWire shook the industry in the late 90s and early 2000s. While I don't support piracy, that era of P2P technology was the gateway for an entire generation to discover new music. It was a grassroots, cultural moment where people first experienced the freedom of curating their own digital libraries. Limewaves nods to that nostalgic era of owning your files, combined with *Waves* representing the slow, peaceful audio-reactive visuals planned for the project.
+
+---
+
+## How It Works
+
+Limewaves acts as a bridge between your music server and a local playback device, completely bypassing the need for a heavy GUI.
+
+- **Control:** A Telegram bot handles all user inputs (playing albums, queuing, stopping).
+- **Backend:** Fetches music directly from a Subsonic-compatible API (Navidrome).
+- **Playback:** Routes audio through a headless `mpv` instance controlled via JSON IPC.
+- **Visuals:** `projectM` runs as a floating window, reading audio from Pipewire in real-time.
+
+Currently designed to run in a lightweight Linux environment (Hyprland), keeping system resources low and the interface entirely out of the way.
 
 ---
 
@@ -13,10 +42,10 @@ A lightweight Telegram bot that controls music playback from your **Navidrome** 
      ↕  Telegram
 [Limewaves bot (runs on Omarchy)]
      ↕  Subsonic API (LAN)
-[Navidrome on M910Q]  ←──  [Music files on Pi NAS]
+[Navidrome]  ←──  [Music storage / NAS]
      ↓  stream URL
 [mpv on Omarchy]
-     ↓  audio output
+     ↓  audio output → Pipewire
 [projectM (floating Hyprland window)]
 ```
 
@@ -27,12 +56,12 @@ A lightweight Telegram bot that controls music playback from your **Navidrome** 
 ### System packages (Arch / Omarchy)
 
 ```bash
-sudo pacman -S mpv python projectm
+sudo pacman -S mpv python projectm libnotify
 ```
 
 ### Python version
 
-Python 3.11+ required (uses `int | None` union types).
+Python 3.11+ required.
 
 ### Telegram Bot Token
 
@@ -66,8 +95,6 @@ cp .env.example .env
 nano .env
 ```
 
-Fill in:
-
 | Key | Value |
 |-----|-------|
 | `TELEGRAM_BOT_TOKEN` | From @BotFather |
@@ -77,7 +104,7 @@ Fill in:
 | `NAVIDROME_PASSWORD` | Your Navidrome password |
 | `MPV_SOCKET` | `/tmp/mpvsocket` (default is fine) |
 
-### 4. Test the connection first
+### 4. Test the Navidrome connection
 
 ```bash
 source ~/.venv/limewaves/bin/activate
@@ -85,13 +112,41 @@ python -c "from navidrome.client import NavidromeClient; print(NavidromeClient()
 # Should print: True
 ```
 
-### 5. Run the bot
+---
+
+## Running Limewaves
+
+Limewaves is designed to be run manually, and only when you want to listen.
+
+### Start
 
 ```bash
+cd ~/projects/limewaves
+source ~/.venv/limewaves/bin/activate
 python main.py
 ```
 
-Open Telegram → your bot → `/start`
+### Start with track change notifications
+
+```bash
+cd ~/projects/limewaves
+source ~/.venv/limewaves/bin/activate
+python notifier.py &
+python main.py
+```
+
+### Stop
+
+`Ctrl+C` in the terminal. The notifier stops automatically since it shares the same session.
+
+### Optional: shell aliases
+
+Add to your `~/.bashrc` for convenience:
+
+```bash
+alias lw="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python main.py"
+alias lw-notify="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python notifier.py & python main.py"
+```
 
 ---
 
@@ -105,7 +160,7 @@ Open Telegram → your bot → `/start`
 | `/queue <query>` | Search and append to queue |
 | `/random` | Play 25 random songs |
 | `/random <genre>` | Play 25 random songs from a genre |
-| `/search <query>` | Show results as tappable buttons |
+| `/search <query>` | Browse results as tappable buttons |
 
 ### Controls
 
@@ -132,12 +187,12 @@ Open Telegram → your bot → `/start`
 
 ## projectM Setup
 
-projectM reads audio from Pipewire automatically, no extra config needed as long as mpv is routing through Pipewire (it does by default on Arch).
+projectM reads audio from Pipewire automatically, so no extra config is needed as long as mpv is routing through Pipewire (it does by default on Arch).
 
 ### Launch projectM
 
 ```bash
-projectM-pulseaudio   # or just: projectM
+projectM
 ```
 
 On Hyprland, make it a floating window by adding to your `hyprland.conf`:
@@ -158,55 +213,17 @@ Presets are stored in `/usr/share/projectM/presets/`. The Milkdrop ones under `p
 
 ---
 
-## Running Limewaves
-
-Limewaves is designed to be run manually. Only when you want to listen to music.
-
-### Start
-
-```bash
-cd ~/projects/limewaves
-source ~/.venv/limewaves/bin/activate
-python main.py
-```
-
-### Start with notifier (track change notifications)
-
-```bash
-cd ~/projects/limewaves
-source ~/.venv/limewaves/bin/activate
-python notifier.py &
-python main.py
-```
-
-### Stop
-
-Just `Ctrl+C` in the terminal. The notifier will stop automatically since it's a background process tied to the same session.
-
-### Optional: shell aliases
-
-Add these to your `~/.bashrc` for convenience:
-
-```bash
-alias lw="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python main.py"
-alias lw-notify="cd ~/projects/limewaves && source ~/.venv/limewaves/bin/activate && python notifier.py & python main.py"
-```
-
-Then just type `lw` or `lw-notify` in any terminal to start.
-
----
-
 ## Project Structure
 
 ```
 limewaves/
 ├── main.py                      # Entry point, registers all handlers
-├── notifier.py                  # Optional track-change notifier (notifier.py)
+├── notifier.py                  # Track change notifier (notify-send)
 ├── config.py                    # Loads .env into constants
 ├── requirements.txt
 ├── .env.example
-├── limewaves.service            # systemd user service for the bot
-├── limewaves-notifier.service   # systemd user service for the notifier (optional)
+├── limewaves.service            # systemd user service (optional)
+├── limewaves-notifier.service   # systemd user service for notifier (optional)
 │
 ├── navidrome/
 │   ├── __init__.py
@@ -226,9 +243,21 @@ limewaves/
 
 ## Roadmap
 
-- [x] Phase 1: Core bot + mpv + projectM on Omarchy laptop
-- [ ] Phase 2: Custom p5.js visualizer with WebSocket audio bridge
-- [ ] Phase 3: Migrate to mini PC, connect DAC + speakers + projector
+**Phase 1: The Foundation (Current)**
+- [x] Telegram bot integration
+- [x] Subsonic/Navidrome API connection
+- [x] Headless `mpv` playback via IPC socket
+- [x] Track change notifications via `notify-send`
+
+**Phase 2: The Visuals**
+- [ ] Develop a slow-moving, peaceful custom visualizer using p5.js
+- [ ] Extract a color palette from the current track's album art to drive ambient gradient visuals
+- [ ] WebSocket bridge for real-time audio analysis → visual parameters
+
+**Phase 3: Dedicated Hardware (The Ritual Setup)**
+- [ ] Migrate the player to a dedicated local node (mini PC)
+- [ ] Integrate a dedicated DAC/Amp for high-fidelity audio output
+- [ ] Connect to a projector to display the ambient visuals in the listening room
 
 ---
 
@@ -241,20 +270,16 @@ Check the terminal output for errors. Confirm the token is correct in `.env` and
 Make sure `mpv` is installed: `which mpv`. Check the socket path in `.env` is writable.
 
 **Navidrome ping returns False**
-Confirm the URL is reachable from the laptop: `curl http://192.168.x.x:4533/rest/ping?u=...`. Check your Navidrome credentials.
+Confirm the URL is reachable: `curl http://192.168.x.x:4533/rest/ping`. Check your credentials in `.env`.
 
 **No audio from projectM**
 Run `pactl list sources` and confirm Pipewire is active. projectM should pick up the monitor source automatically.
 
----
-
-## Why the name?
-
-LimeWire was the first place music felt free, even if it technically wasn't. Limewaves is the grown-up, self-hosted version of that same spirit: owning your music experience completely.
+**No notifications appearing**
+Make sure `libnotify` is installed: `sudo pacman -S libnotify`. Run `notify-send test` to confirm it works.
 
 ---
 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
-
